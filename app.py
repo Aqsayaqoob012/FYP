@@ -2164,7 +2164,6 @@ def check_exam_presence():
             silent=True
         )
 
-
         if not data:
 
             return jsonify({
@@ -2176,11 +2175,9 @@ def check_exam_presence():
                     "No data received"
             })
 
-
         image_data = data.get(
             "image"
         )
-
 
         if not image_data:
 
@@ -2193,11 +2190,13 @@ def check_exam_presence():
                     "Camera image missing"
             })
 
+        # =================================================
+        # DECODE CAMERA FRAME
+        # =================================================
 
         image = decode_image(
             image_data
         )
-
 
         if image is None:
 
@@ -2210,20 +2209,22 @@ def check_exam_presence():
                     "Invalid camera image"
             })
 
+        # =================================================
+        # FACE COUNT
+        # =================================================
 
         face_count = count_exam_faces(
             image
         )
 
-
         print(
-
             "EXAM PRESENCE -> "
-
-            f"Faces detected: "
-            f"{face_count}"
+            f"Faces detected: {face_count}"
         )
 
+        # =================================================
+        # NO FACE
+        # =================================================
 
         if face_count == 0:
 
@@ -2235,10 +2236,25 @@ def check_exam_presence():
                 "face_count":
                     0,
 
+                "direction":
+                    "UNKNOWN",
+
+                "looking_away":
+                    False,
+
+                "away_seconds":
+                    0,
+
+                "alert":
+                    None,
+
                 "message":
                     "No face detected."
             })
 
+        # =================================================
+        # MULTIPLE FACES
+        # =================================================
 
         if face_count > 1:
 
@@ -2250,10 +2266,40 @@ def check_exam_presence():
                 "face_count":
                     face_count,
 
+                "direction":
+                    "UNKNOWN",
+
+                "looking_away":
+                    False,
+
+                "away_seconds":
+                    0,
+
+                "alert":
+                    None,
+
                 "message":
                     "Multiple faces detected."
             })
 
+        # =================================================
+        # ONE FACE - HEAD POSE CHECK
+        # =================================================
+
+        pose = get_head_pose(
+            image
+        )
+
+        print(
+            "HEAD POSE -> "
+            f"Direction: {pose['direction']} | "
+            f"Away: {pose['away_seconds']}s | "
+            f"Alert: {pose['alert']}"
+        )
+
+        # =================================================
+        # PRESENT + HEAD POSE RESULT
+        # =================================================
 
         return jsonify({
 
@@ -2263,23 +2309,30 @@ def check_exam_presence():
             "face_count":
                 1,
 
+            "direction":
+                pose["direction"],
+
+            "looking_away":
+                pose["looking_away"],
+
+            "away_seconds":
+                pose["away_seconds"],
+
+            "alert":
+                pose["alert"],
+
             "message":
                 "One face detected."
         })
 
-
     except Exception as e:
 
         print(
-
             "Presence Check Error:",
-
             str(e)
         )
 
-
         traceback.print_exc()
-
 
         return jsonify({
 
@@ -2289,7 +2342,6 @@ def check_exam_presence():
             "message":
                 str(e)
         })
-
 
 # =========================================================
 # EXAM IDENTITY CHECK
