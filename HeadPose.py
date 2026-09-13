@@ -49,7 +49,7 @@ def get_head_pose(frame):
 
         LEFT_THRESHOLD = -20
         RIGHT_THRESHOLD = 20
-        DOWN_THRESHOLD = 60
+        DOWN_THRESHOLD = 40
 
         if dx < LEFT_THRESHOLD:
             direction = "LEFT"

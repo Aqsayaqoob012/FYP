@@ -21,6 +21,7 @@ from flask import (
 from flask_cors import CORS
 
 from deepface import DeepFace
+from HeadPose import get_head_pose
 
 
 # =========================================================
