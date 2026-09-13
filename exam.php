@@ -573,6 +573,13 @@ let lastPresenceStatus =
     "unknown";
 
 
+/*
+    Prevent duplicate LOOKING_AWAY warnings/events
+    while the same continuous incident is active.
+*/
+let headPoseViolationActive = false;
+
+
 // =========================================================
 // IDENTITY VARIABLES
 // =========================================================
@@ -654,6 +661,97 @@ function captureFrame() {
 
         0.90
     );
+}
+
+
+// =========================================================
+// SAVE PROCTOR EVENT
+// =========================================================
+
+async function saveProctorEvent(
+    eventType,
+    direction = null,
+    eventDetails = "",
+    image = null
+) {
+
+    try {
+
+        const evidenceImage =
+            image || captureFrame();
+
+
+        const response =
+            await fetch(
+
+                "save_proctor_event.php",
+
+                {
+
+                    method:
+                        "POST",
+
+                    headers: {
+
+                        "Content-Type":
+                            "application/json"
+                    },
+
+                    body:
+                        JSON.stringify({
+
+                            event_type:
+                                eventType,
+
+                            direction:
+                                direction,
+
+                            event_details:
+                                eventDetails,
+
+                            image:
+                                evidenceImage
+                        })
+                }
+            );
+
+
+        const data =
+            await response.json();
+
+
+        if (
+            data.status ===
+            "success"
+        ) {
+
+            console.log(
+                "PROCTOR EVENT SAVED ✅",
+                data
+            );
+        }
+        else {
+
+            console.error(
+                "PROCTOR EVENT SAVE FAILED ❌",
+                data
+            );
+        }
+
+    }
+
+    catch (error) {
+
+        /*
+            Event logging failure should NOT stop
+            or terminate the student's exam.
+        */
+
+        console.error(
+            "Proctor Event API Error:",
+            error
+        );
+    }
 }
 
 
@@ -929,6 +1027,18 @@ async function startProctorCamera() {
                     !examSubmitted
                 ) {
 
+                    saveProctorEvent(
+
+                        "CAMERA_DISABLED",
+
+                        null,
+
+                        "The proctoring camera stream was disabled during the exam.",
+
+                        captureFrame()
+                    );
+
+
                     terminateExam(
 
                         "Proctoring camera was disabled."
@@ -1092,16 +1202,100 @@ async function checkFacePresence() {
                 false;
 
 
+            // =================================================
+            // HEAD POSE MONITORING
+            // =================================================
+
             if (
-                !identityCheckRunning
+                data.alert ===
+                "looking_away"
             ) {
 
-                setProctorStatus(
+                if (
+                    !identityCheckRunning
+                ) {
 
-                    "🟢 Student Visible",
+                    setProctorStatus(
 
-                    "Identity monitoring active"
-                );
+                        "⚠️ Looking Away",
+
+                        `Please look at the screen (${data.direction})`
+                    );
+                }
+
+
+                /*
+                    Only one warning + one DB event
+                    for one continuous looking-away incident.
+                */
+
+                if (
+                    !headPoseViolationActive
+                ) {
+
+                    headPoseViolationActive =
+                        true;
+
+
+                    saveProctorEvent(
+
+                        "LOOKING_AWAY",
+
+                        data.direction || null,
+
+                        "Student looked away from the screen for more than 5 seconds.",
+
+                        image
+                    );
+
+
+                    handleViolation(
+
+                        "Student was looking away from the screen for more than 5 seconds."
+                    );
+                }
+            }
+
+            else if (
+                data.looking_away
+            ) {
+
+                if (
+                    !identityCheckRunning
+                ) {
+
+                    setProctorStatus(
+
+                        "🟡 Looking Away",
+
+                        `Please look at the screen (${data.direction})`
+                    );
+                }
+            }
+
+            else {
+
+                /*
+                    Student is facing forward again.
+                    Allow a future looking-away incident
+                    to create a new warning/event.
+                */
+
+                headPoseViolationActive =
+                    false;
+
+
+                if (
+                    !identityCheckRunning
+                ) {
+
+                    setProctorStatus(
+
+                        "🟢 Student Visible",
+
+                        "Identity monitoring active"
+                    );
+                }
             }
 
 
@@ -1180,6 +1374,18 @@ async function checkFacePresence() {
                 noFaceChecks === 13
             ) {
 
+                saveProctorEvent(
+
+                    "FACE_MISSING",
+
+                    null,
+
+                    `Student was not visible in the camera. Presence check count: ${noFaceChecks}.`,
+
+                    image
+                );
+
+
                 handleViolation(
 
                     "Student is not visible in the camera."
@@ -1237,6 +1443,18 @@ async function checkFacePresence() {
                 ||
                 multipleFaceChecks === 11
             ) {
+
+                saveProctorEvent(
+
+                    "MULTIPLE_FACES",
+
+                    null,
+
+                    `Multiple faces detected. Presence check count: ${multipleFaceChecks}.`,
+
+                    image
+                );
+
 
                 handleViolation(
 
@@ -1497,6 +1715,18 @@ async function verifyStudentIdentity() {
                 likely different person.
             */
 
+            saveProctorEvent(
+
+                "WRONG_PERSON",
+
+                null,
+
+                `Identity verification failed ${identityFailureStreak} consecutive times.`,
+
+                image
+            );
+
+
             handleViolation(
 
                 "A different person appears to be taking the exam."
@@ -1644,6 +1874,18 @@ document.addEventListener(
             !examSubmitted
         ) {
 
+            saveProctorEvent(
+
+                "TAB_SWITCH",
+
+                null,
+
+                "User switched tab or minimized the browser window.",
+
+                captureFrame()
+            );
+
+
             handleViolation(
 
                 "User switched tab or minimized the browser."
@@ -1669,6 +1911,18 @@ document.addEventListener(
 
 
         e.preventDefault();
+
+
+        saveProctorEvent(
+
+            "COPY_ATTEMPT",
+
+            null,
+
+            "User attempted to copy quiz content.",
+
+            captureFrame()
+        );
 
 
         handleViolation(
@@ -1697,6 +1951,18 @@ document.addEventListener(
         e.preventDefault();
 
 
+        saveProctorEvent(
+
+            "PASTE_ATTEMPT",
+
+            null,
+
+            "User attempted to paste content into the exam.",
+
+            captureFrame()
+        );
+
+
         handleViolation(
 
             "Attempted to paste into the exam."
@@ -1721,6 +1987,18 @@ document.addEventListener(
 
 
         e.preventDefault();
+
+
+        saveProctorEvent(
+
+            "RIGHT_CLICK",
+
+            null,
+
+            "User attempted to open the right-click context menu.",
+
+            captureFrame()
+        );
 
 
         handleViolation(
@@ -1783,6 +2061,18 @@ document
                             track.stop()
                     );
             }
+
+
+            saveProctorEvent(
+
+                "EXAM_SUBMITTED",
+
+                null,
+
+                "Student submitted the exam.",
+
+                null
+            );
 
 
             alert(
